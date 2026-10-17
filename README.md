@@ -4,7 +4,7 @@ Native Rust memory-map and register documentation for
 [mdBook](https://rust-lang.github.io/mdBook/), using reusable YAML IP definitions
 and hierarchical system maps.
 
-**Status: checkpoint 1, package and fence contract ready for review.**
+**Status: checkpoint 2, native model and hierarchy resolver ready for review.**
 This is not yet a functional replacement for the Python-backed preprocessor.
 Active `memmap` inclusions fail explicitly until native rendering is implemented.
 Books without active inclusions are preserved. No Python process or backend
@@ -54,8 +54,8 @@ mdbook-wavedrom. Its library exports `Memmap` implementing `Preprocessor`; the
 binary supports `--help`, `--version`, `supports html`, and `install [book-dir]`.
 It supports mdBook `>=0.5.4, <0.6.0` and HTML only.
 Protocol stdout contains JSON only; diagnostics use stderr.
-At checkpoint 1 the configuration is scaffolded, not a claim that source-root
-enforcement or rendering is implemented.
+Book configuration remains scaffolded until checkpoint 3 wires native rendering.
+The library `Project` already enforces canonical source roots for source loading.
 
 ## Unchanged Fence Options
 
@@ -75,7 +75,7 @@ view: registers
 
 | Property | Usage |
 |----------|-------|
-| `source` | Required nonempty string. YAML path relative to the containing chapter; canonical path/root checking is implemented with the resolver in checkpoint 2. |
+| `source` | Required nonempty string. YAML path relative to the containing chapter; the native library enforces canonical paths and allowed roots. |
 | `view` | Required `summary` or `registers`. |
 | `map` | Exact IP-local map name; required for IP inputs and mutually exclusive with `address_space`. |
 | `address_space` | Exact system address-space name; required for system inputs and mutually exclusive with `map`. |
@@ -92,6 +92,69 @@ reference for renderer parity, not a runtime dependency or fallback.
 The old `backend`, `backend-args`, and `backend-timeout-seconds` settings are not
 part of the native architecture; migration diagnostics and strict configuration
 will be implemented with the integrated renderer.
+
+## Native Model and Hierarchy API
+
+```rust,no_run
+use mdbook_memmap::project::Project;
+use std::path::PathBuf;
+
+let mut project = Project::new(&[PathBuf::from("released-maps")])?;
+let view = project.resolve(
+    &PathBuf::from("released-maps/systems/soc.yaml"), "cpu"
+)?;
+for block in view.blocks {
+    for register in &block.memory_map.registers {
+        println!("{}: {}", register.name, &block.base + &register.offset);
+    }
+}
+# Ok::<(), anyhow::Error>(())
+```
+
+`loader::load_definition` parses and validates one definition without traversing
+references. Use `Project::load` for the complete hierarchy or `Project::resolve`
+for a selected flattened system view. Sources resolve relative to the YAML file
+containing the reference. Every declared space is traversed, not only the one
+selected for display. The typed model retains source file/line/column/object-path
+locations, descriptions, reset values/masks, and instance roles.
+
+The strict scalar subset matches the Python authoring contract: decimal/hex
+nonnegative integers, true/false booleans, and string prose. Quoted numeric text,
+floating-point syntax, nulls, and booleans are not accepted as integers.
+`on`/`off` and date-like strings remain text. Decimal leading zeros do not imply
+octal. Binary/octal/separator integer syntax is not recognized as an integer.
+Reject duplicate keys, merge keys, aliases, anchors, explicit tags, multiple
+documents, non-string mapping keys, and unsupported directives; `%YAML 1.2`
+is allowed.
+
+Local checks cover naming, unknown/missing properties, unique names, widths,
+field/register bounds and overlaps, register alignment, software access/effects,
+hardware-write volatility, and reset references/widths/duplicates. Unspecified
+resets stay unspecified; zero masks do not imply retention; masked-out value bits
+are not zeroed. Memory/reserved maps remain distinct from register maps.
+
+Hierarchy checks cover file existence, canonical allowed roots, symlink escapes,
+cycles, unique VLNV-to-file identity, target existence, complete allocation fit,
+overlaps including allocation tails, absolute register alignment, and ambiguous
+flattened instance/map/reset names. A tail allocation does not enlarge implemented
+storage; aliases remain unsupported.
+
+A `Project` is a per-operation snapshot. Reused IP definitions share `Arc`
+identity; a fresh project is required to reread edits. Failed hierarchy loads
+clear the source/identity caches. `snapshots()` exposes the exact parsed bytes for
+future provenance checks; file contents are not locked against concurrent edits,
+so release inputs must remain immutable during a build.
+
+Addresses, sizes, and reset values/masks use arbitrary-precision `BigUint`;
+there is no silent 64-bit truncation. Widths and bit indices use checked `u64`
+arithmetic. As explicit operational limits, YAML nesting and source-reference
+depth are limited to 128 levels, and width/index values above `u64::MAX` fail.
+These limits fail diagnostically instead of overflowing or exhausting the stack.
+
+The [fixtures](tests/fixtures/) are copied compatibility inputs from the accepted
+rds-designspec timer/subsystem/system example. The native tests assert all four
+reference addresses, shared IP identity, and the same access/reset semantics.
+No Python executable is needed to run the Rust test suite.
 
 ## Development and Packaging
 

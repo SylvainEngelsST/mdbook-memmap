@@ -1,0 +1,70 @@
+schema_version: 1
+naming_profile: rds-v1
+kind: ip
+
+vlnv:
+  vendor: example.org
+  library: peripherals
+  name: timer
+  version: "1.0"
+
+description: |
+  General-purpose timer.
+
+  Writing **ENABLE** starts the counter.
+
+reset_types:
+  - name: HARD
+    description: Hardware reset of the timer; takes priority over SOFT.
+  - name: SOFT
+    description: Software-triggered reset of the timer.
+
+maps:
+  - name: csr
+    usage: register
+    size_bytes: 4096
+    data_width_bits: 32
+    registers:
+      - name: CTRL
+        offset: 0x000
+        width_bits: 32
+        description: Timer control.
+        fields:
+          - name: ENABLE
+            lsb: 0
+            width_bits: 1
+            access: read-write
+            hwAccess: read-only
+            volatile: false
+            resets:
+              - resetType: HARD
+                value: 0
+                mask: 1
+              - resetType: SOFT
+                value: 0
+                mask: 1
+            description: Enable counting.
+
+      - name: STATUS
+        offset: 0x004
+        width_bits: 32
+        description: Timer status.
+        fields:
+          - name: EXPIRED
+            lsb: 0
+            width_bits: 1
+            access: read-write
+            hwAccess: read-write
+            volatile: true
+            modified_write_value: oneToClear
+            resets:
+              - resetType: HARD
+                value: 0
+                mask: 1
+              - resetType: SOFT
+                value: 0
+                mask: 1
+            description: |
+              Set when the counter expires. Write one to clear.
+              A hardware set takes priority over a simultaneous software clear.
+              HARD or SOFT reset takes priority over either update.

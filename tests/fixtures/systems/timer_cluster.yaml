@@ -1,0 +1,28 @@
+schema_version: 1
+naming_profile: rds-v1
+kind: system
+
+vlnv:
+  vendor: example.org
+  library: subsystems
+  name: timer_cluster
+  version: "1.0"
+
+address_spaces:
+  - name: apb
+    address_width_bits: 16
+    data_width_bits: 32
+    size_bytes: 65536
+    instances:
+      - name: TIMER0
+        source: ../ips/timer.yaml
+        mappings:
+          - target: csr
+            base: 0x5000
+            size_bytes: 4096
+      - name: TIMER1
+        source: ../ips/timer.yaml
+        mappings:
+          - target: csr
+            base: 0x6000
+            size_bytes: 4096

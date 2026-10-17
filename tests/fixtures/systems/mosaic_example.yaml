@@ -1,0 +1,22 @@
+schema_version: 1
+naming_profile: rds-v1
+kind: system
+
+vlnv:
+  vendor: example.org
+  library: systems
+  name: mosaic_example
+  version: "1.0"
+
+address_spaces:
+  - name: cpu
+    address_width_bits: 32
+    data_width_bits: 32
+    size_bytes: 0x100000000
+    instances:
+      - name: CORE_PERIPHERALS
+        source: timer_cluster.yaml
+        mappings:
+          - target: apb
+            base: 0x40000000
+            size_bytes: 65536

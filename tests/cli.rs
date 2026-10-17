@@ -78,7 +78,7 @@ fn active_fences_fail_without_partial_book_json() {
     assert!(output.stdout.is_empty());
     let errors = String::from_utf8_lossy(&output.stderr);
     assert!(errors.contains("page.md:1"));
-    assert!(errors.contains("not available at checkpoint 1"));
+    assert!(errors.contains("not available before checkpoint 3"));
 }
 
 #[test]

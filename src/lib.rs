@@ -1,10 +1,15 @@
 //! Native memory-map preprocessor for mdBook.
 //!
-//! This initial package establishes the protocol and authoring contract.
-//! Native source loading and rendering are introduced at subsequent review gates.
+//! Native source loading, validation, and hierarchy resolution are available.
+//! Rendering is introduced at checkpoint 3.
 
 pub mod fences;
 pub mod install;
+pub mod loader;
+pub mod model;
+pub mod project;
+mod source;
+mod validation;
 
 use anyhow::{bail, Context, Result};
 use mdbook_preprocessor::book::{Book, BookItem};
@@ -49,7 +54,7 @@ fn inspect_items(items: &[BookItem]) -> Result<()> {
                 .with_context(|| format!("chapter {}", path.display()))?;
             if let Some(inclusion) = inclusions.first() {
                 bail!(
-                    "{}:{}: native memory-map rendering is not available at checkpoint 1",
+                    "{}:{}: native memory-map rendering is not available before checkpoint 3",
                     path.display(),
                     inclusion.line
                 );
