@@ -1,0 +1,28 @@
+[package]
+name = "mdbook-memmap"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.99"
+authors = ["Sylvain ENGELS"]
+description = "Native memory-map and register documentation for mdBook"
+license = "MPL-2.0"
+repository = "https://github.com/SylvainEngelsST/mdbook-memmap"
+homepage = "https://github.com/SylvainEngelsST/mdbook-memmap"
+readme = "README.md"
+keywords = ["mdbook", "memory-map", "registers", "documentation"]
+categories = ["command-line-utilities", "development-tools"]
+include = ["src/**", "tests/**", "examples/**", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE"]
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+mdbook-preprocessor = "0.5.4"
+pulldown-cmark = { version = "0.13", default-features = false }
+semver = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml_ng = "0.10"
+toml_edit = "0.22"
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,9 @@
+[book]
+title = "Memory Map Example"
+src = "src"
+
+[preprocessor.memmap]
+command = "mdbook-memmap"
+source-roots = ["."]
+renderers = ["html"]
+before = ["links"]
