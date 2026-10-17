@@ -11,7 +11,7 @@ homepage = "https://github.com/SylvainEngelsST/mdbook-memmap"
 readme = "README.md"
 keywords = ["mdbook", "memory-map", "registers", "documentation"]
 categories = ["command-line-utilities", "development-tools"]
-include = ["src/**", "tests/**", "examples/**", "build.rs", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE"]
+include = ["src/**", "tests/**", "examples/*/book.toml", "examples/book/src/**", "build.rs", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE"]
 
 [dependencies]
 anyhow = "1"

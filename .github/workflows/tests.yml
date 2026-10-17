@@ -27,4 +27,15 @@ jobs:
       - run: cargo doc --locked --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
-      - run: cargo package --locked
+      - name: Verify source-only package with generated examples present
+        run: |
+          mkdir -p examples/book/book examples/locked-book/book
+          printf 'generated\n' > examples/book/book/index.html
+          printf 'generated\n' > examples/locked-book/book/index.html
+          printf '{"generated":true}\n' > examples/locked-book/memmap-provenance.json
+          cargo package --locked --list > "$RUNNER_TEMP/mdbook-memmap-package-files"
+          if grep -E '^examples/(book/book/|locked-book/(book/|memmap-provenance\.json))' "$RUNNER_TEMP/mdbook-memmap-package-files"; then
+            echo "Generated example artifacts must not be packaged"
+            exit 1
+          fi
+          cargo package --locked

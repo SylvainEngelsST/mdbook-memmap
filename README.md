@@ -336,6 +336,8 @@ For offline end users, distribute the compiled native executable built with
 internet access to run it. Building from source offline additionally requires a
 prepopulated Cargo cache or a separately prepared Cargo vendor tree; a source
 checkout or `.crate` archive alone does not bundle third-party dependencies.
+Crate contents include example sources/configuration, not generated HTML or
+per-build provenance reports, even after building the examples locally.
 
 Only maintainers regenerating the parity goldens need the Python reference:
 
