@@ -56,7 +56,7 @@ fn error<T: std::fmt::Debug>(action: impl FnOnce() -> anyhow::Result<T>, rule: &
 }
 
 #[test]
-fn nested_example_matches_all_python_reference_addresses_and_reuses_ip() {
+fn nested_example_matches_all_expected_addresses_and_reuses_ip() {
     let fixture = Fixture::new();
     let mut project = fixture.project();
     let view = project.resolve(&fixture.system(), "cpu").unwrap();

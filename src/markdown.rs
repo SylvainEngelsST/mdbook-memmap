@@ -1,4 +1,4 @@
-//! Deterministic Markdown compatible with the standalone reference renderer.
+//! Deterministic native Markdown rendering.
 
 use crate::fences::View;
 use crate::model::*;
@@ -280,7 +280,7 @@ fn details(
 /// [`crate::project`]; this is not a substitute for source validation.
 ///
 /// The legacy generated comment and anchor encoding are retained deliberately
-/// so native output can be checked byte-for-byte against the reference exporter.
+/// to preserve existing generated documents and links.
 pub fn render(
     source: Source<'_>,
     map_name: Option<&str>,

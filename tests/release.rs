@@ -85,7 +85,7 @@ fn hashing_matches_standard_sha256_vectors() {
 }
 
 #[test]
-fn independent_python_locks_are_portable_and_cover_complete_inventory() {
+fn version_one_lock_fixtures_are_portable_and_cover_complete_inventory() {
     for _ in 0..2 {
         let fixture = Fixture::new();
         let project = fixture.inventory().unwrap();

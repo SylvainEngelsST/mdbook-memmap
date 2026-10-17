@@ -22,7 +22,7 @@ fn fixtures() -> PathBuf {
 }
 
 #[test]
-fn matches_independent_python_reference_byte_for_byte() {
+fn matches_markdown_regression_fixtures_byte_for_byte() {
     let root = fixtures();
     let mut project = Project::new();
     let cases: Vec<Case> = serde_json::from_str(include_str!("reference/cases.json")).unwrap();
