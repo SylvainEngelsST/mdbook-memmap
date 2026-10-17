@@ -23,3 +23,19 @@ for case in json.loads((HERE / "cases.json").read_text()):
         if key in case:
             command.extend([flag, case[key]])
     subprocess.run(command, check=True)
+
+for name, source, space in [
+    ("release.lock", "systems/mosaic_example.yaml", "cpu"),
+    ("rendering.lock", "systems/rendering.yaml", "wide"),
+]:
+    subprocess.run([
+        sys.argv[1], "lock", str(FIXTURES / source), "--source-root", str(FIXTURES),
+        "--address-space", space, "--release", "native-compat-1",
+        "--output", str(HERE / (name + ".json")),
+    ], check=True)
+
+combined = json.loads((HERE / "release.lock.json").read_text())
+extra = json.loads((HERE / "rendering.lock.json").read_text())
+combined["sources"].extend(extra["sources"])
+combined["sources"].sort(key=lambda pin: pin["path"])
+(HERE / "combined.lock.json").write_text(json.dumps(combined, indent=2, sort_keys=True) + "\n")

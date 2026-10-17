@@ -4,13 +4,14 @@ Native Rust memory-map and register documentation for
 [mdBook](https://rust-lang.github.io/mdBook/), using reusable YAML IP definitions
 and hierarchical system maps.
 
-**Status: checkpoint 3, native rendering and mdBook integration ready for review.**
+**Status: checkpoint 4, native release verification ready for review.**
 Active `memmap` inclusions now render directly in Rust. Books without inclusions
 are preserved. No Python runtime, package installation, or backend command is
 needed by end users.
 
-Release-lock/provenance compatibility remains checkpoint 4. This build rejects
-those settings rather than silently producing an unqualified release book.
+Existing version-1 release locks are consumed natively. The approved version-2
+mdBook provenance envelope identifies the Rust implementation and executable;
+it no longer claims that a Python backend was used.
 
 ## Scope and Review Gates
 
@@ -101,8 +102,8 @@ version 1, `rds-v1` naming, separate IP/system definitions, software access,
 reference for renderer parity, not a runtime dependency or fallback.
 When migrating a Python-backed book, remove `backend`, `backend-args`, and
 `backend-timeout-seconds`; each causes an explicit migration diagnostic. The
-fences do not change. `release-lock` and `provenance` deliberately fail until
-checkpoint 4; keep using the qualified release tooling for locked builds.
+fences do not change. Configure `release-lock` and `provenance` together for
+locked builds; neither setting is optional when the other is present.
 
 ## Native Markdown Rendering
 
@@ -191,8 +192,8 @@ storage; aliases remain unsupported.
 A `Project` is a per-operation snapshot. Reused IP definitions share `Arc`
 identity; a fresh project is required to reread edits. Failed hierarchy loads
 clear the source/identity caches. `snapshots()` exposes the exact parsed bytes for
-future provenance checks; file contents are not locked against concurrent edits,
-so release inputs must remain immutable during a build.
+provenance checks. File contents are not locked against concurrent edits:
+release inputs must remain immutable during a build.
 
 Addresses, sizes, and reset values/masks use arbitrary-precision `BigUint`;
 there is no silent 64-bit truncation. Widths and bit indices use checked `u64`
@@ -208,6 +209,91 @@ inputs from the accepted rds-designspec example. Additional rendering fixtures
 exercise wide values, table escaping, and partial resets. The native tests assert
 all four reference addresses, shared IP identity, and the same access/reset
 semantics. No Python executable is needed to run the Rust test suite.
+
+## Locked Books and Native Provenance
+
+Create a version-1 lock with the existing standalone tool, which remains a
+separate Python utility in this phase:
+
+```sh
+rds-memmap lock released-maps/systems/soc.yaml \
+  --source-root released-maps --address-space cpu --release soc-v1 \
+  --output inputs.lock.json
+```
+
+Consuming that lock in mdBook requires only the native binary:
+
+```toml
+[preprocessor.memmap]
+command = "mdbook-memmap"
+source-roots = ["../released-maps"]
+release-lock = "../inputs.lock.json"
+provenance = "memmap-provenance.json"
+renderers = ["html"]
+before = ["links"]
+```
+
+Configuration paths are relative to the book root; pin paths and the entry
+source inside a lock are relative to the lock's directory. Locks are portable
+when moved together with their source trees. The configured canonical roots
+still apply to every pinned and transitively referenced source.
+
+Native verification:
+
+- Rejects malformed/unknown/duplicate JSON properties, invalid version/release,
+  absolute pin paths, duplicate canonical sources, and invalid digests/VLNVs.
+- Verifies exact SHA-256 bytes **before parsing**, then checks the native VLNV.
+- Validates the complete pinned inventory and its references, including inputs
+  not selected for display, and validates the lock's entry selector.
+- Rejects unpinned referenced/included sources. A fence can select any pinned
+  IP/system with a valid selector; it is not restricted to the entry alone.
+- Binds hashes to the bytes actually parsed, then rechecks lock/source bytes
+  and canonical pin paths immediately before publishing provenance.
+- Requires at least one active inclusion in a locked book.
+
+Use `Project::with_release_lock(roots, Arc<ReleaseLock>)` for library loading
+with pre-parse pin checks, and call `ReleaseLock::verify_inventory` before use.
+The mdBook integration performs the complete verification/publishing lifecycle.
+Do not use `Project::new` alone as a substitute for locked loading.
+
+### Provenance format
+
+The mdBook report deliberately changes its outer `format_version` from **1 to
+2** to distinguish native execution. The old `backend` property is removed.
+The `inputs` object retains version 1, release label, exact lock digest, original
+relative source records, and ordered selection records with fragment hashes.
+
+| Property | Meaning |
+|----------|---------|
+| `adapter` | `mdbook-memmap` package name and version. |
+| `mdbook_version` | Calling mdBook version. |
+| `source_roots` | Canonical allowed roots for this invocation. |
+| `inputs.release` / `inputs.release_lock_sha256` | Release label and SHA-256 of exact lock bytes. |
+| `inputs.sources` | Complete pins sorted by their original relative path. |
+| `inputs.generator.kind` | `native-rust`, never a fabricated Python identity. |
+| `inputs.generator.name` / `version` | Native package identity. |
+| `inputs.generator.implementation_sha256` | SHA-256 of compact UTF-8 JSON mapping sorted package filenames to their SHA-256 values. Includes every Rust source, the build script, Cargo manifest, and Cargo lock, embedded at compile time. |
+| `inputs.generator.executable_sha256` | SHA-256 of the running executable. For a library embedding this is the host executable containing the engine. |
+| `inputs.selections` | Preorder inclusion ID, lock-relative source, canonical roots, view, selector, anchor prefix, and `output_sha256` of exact generated UTF-8 Markdown. |
+
+Reports are deterministic for the same executable, paths, lock bytes, and
+selections. Relocation changes the recorded absolute roots, but not relative
+pins, selection fragment hashes, or generator identity. Different compiler,
+linker, build paths, or packaging normalization can change executable and/or
+implementation identity; compare the actual qualified artifact, not just its
+version string.
+
+Provenance is atomically replaced only after all inclusions and release checks
+succeed. Its parent must already exist. It cannot overwrite a source tree,
+chapter input (including a symlink target), lock, configuration, or running
+executable, and cannot replace a symbolic link. Failed builds preserve any
+previous report; **always check the build exit status** rather than treating a
+pre-existing report as proof of a successful rebuild.
+
+Locks provide integrity against a trusted manifest, not authenticity or a
+digital signature. Provenance attests the preprocessor's generated fragments,
+not the final HTML or subsequent mdBook preprocessors/renderers. Keep release
+inputs immutable; final byte rechecks are not filesystem locks.
 
 ## Development and Packaging
 
@@ -236,6 +322,20 @@ only the native binary directory on the child process's `PATH`, checks identical
 HTML bytes, all four system register addresses, 18 tables, 23 unique memory-map
 anchors, and their links. CI runs this test as well as the Python-free Rust suite.
 If using `CARGO_TARGET_DIR`, adjust the binary path in the build command.
+
+The [locked example](examples/locked-book/) reuses the same Markdown with a
+combined reference inventory. Build it with `mdbook build examples/locked-book`;
+its report is written beside its configuration and ignored by Git. The second
+explicit book test copies the inputs into a clean temporary workspace, compares
+HTML and provenance from two independent output builds, checks four fragment
+hashes against Python goldens, and proves that changing an unused pin fails
+without publishing new HTML or replacing the previous report.
+
+For offline end users, distribute the compiled native executable built with
+`cargo build --release --locked`. They need neither Python nor Cargo nor
+internet access to run it. Building from source offline additionally requires a
+prepopulated Cargo cache or a separately prepared Cargo vendor tree; a source
+checkout or `.crate` archive alone does not bundle third-party dependencies.
 
 Only maintainers regenerating the parity goldens need the Python reference:
 

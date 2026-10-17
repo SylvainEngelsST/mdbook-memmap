@@ -1,0 +1,40 @@
+{
+  "entry": {
+    "address_space": "cpu",
+    "source": "../fixtures/systems/mosaic_example.yaml"
+  },
+  "format_version": 1,
+  "release": "native-compat-1",
+  "sources": [
+    {
+      "path": "../fixtures/ips/timer.yaml",
+      "sha256": "1c04c8395b3465c73e1c71812312d69d8ab3b3bb0872497b8e1d379560d6ecdd",
+      "vlnv": {
+        "library": "peripherals",
+        "name": "timer",
+        "vendor": "example.org",
+        "version": "1.0"
+      }
+    },
+    {
+      "path": "../fixtures/systems/mosaic_example.yaml",
+      "sha256": "e4f8fb7b068cab8ad7d79d80b905da37d05bf274a9c73f9795d0dfc5d045f117",
+      "vlnv": {
+        "library": "systems",
+        "name": "mosaic_example",
+        "vendor": "example.org",
+        "version": "1.0"
+      }
+    },
+    {
+      "path": "../fixtures/systems/timer_cluster.yaml",
+      "sha256": "0ff47f1dbfdb258c8868d403ec7179f0bbdf7d7abfe4cf6c5cdfdb5d9045f792",
+      "vlnv": {
+        "library": "subsystems",
+        "name": "timer_cluster",
+        "vendor": "example.org",
+        "version": "1.0"
+      }
+    }
+  ]
+}

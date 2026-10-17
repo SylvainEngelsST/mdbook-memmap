@@ -1,6 +1,6 @@
 //! Canonical-root restricted, per-build source snapshot and hierarchy resolver.
 
-use crate::{loader, model::*};
+use crate::{loader, model::*, release::ReleaseLock};
 use anyhow::{bail, Context, Result};
 use num_bigint::BigUint;
 use std::collections::{BTreeMap, BTreeSet};
@@ -12,6 +12,7 @@ pub struct Project {
     definitions: BTreeMap<PathBuf, Arc<Definition>>,
     identities: BTreeMap<Vlnv, PathBuf>,
     snapshots: BTreeMap<PathBuf, Vec<u8>>,
+    release_lock: Option<Arc<ReleaseLock>>,
 }
 
 impl Project {
@@ -36,7 +37,18 @@ impl Project {
             definitions: BTreeMap::new(),
             identities: BTreeMap::new(),
             snapshots: BTreeMap::new(),
+            release_lock: None,
         })
+    }
+
+    pub fn with_release_lock(roots: &[PathBuf], release_lock: Arc<ReleaseLock>) -> Result<Self> {
+        let mut project = Self::new(roots)?;
+        project.release_lock = Some(release_lock);
+        Ok(project)
+    }
+
+    pub fn source_roots(&self) -> &[PathBuf] {
+        &self.roots
     }
 
     pub fn definitions(&self) -> impl Iterator<Item = &Arc<Definition>> {
@@ -89,9 +101,15 @@ impl Project {
         }
         let bytes =
             std::fs::read(&path).with_context(|| format!("{} [source-read]", path.display()))?;
+        if let Some(lock) = &self.release_lock {
+            lock.check_bytes(&path, &bytes)?;
+        }
         let text = std::str::from_utf8(&bytes)
             .with_context(|| format!("{} [source-read] invalid UTF-8", path.display()))?;
         let definition = Arc::new(loader::parse_definition(&path, text)?);
+        if let Some(lock) = &self.release_lock {
+            lock.check_identity(&definition)?;
+        }
         if let Some(other) = self.identities.get(&definition.vlnv) {
             if other != &path {
                 bail!(

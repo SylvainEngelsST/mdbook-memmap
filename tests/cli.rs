@@ -228,8 +228,12 @@ fn strict_native_configuration_rejects_obsolete_unsafe_and_unknown_settings() {
         ("source-roots", json!([]), "at least one"),
         ("source-roots", json!("maps"), "invalid preprocessor.memmap"),
         ("source-roots", json!(["missing"]), "invalid source roots"),
-        ("release-lock", json!("lock.json"), "checkpoint 4"),
-        ("provenance", json!("provenance.json"), "checkpoint 4"),
+        ("release-lock", json!("lock.json"), "configured together"),
+        (
+            "provenance",
+            json!("provenance.json"),
+            "configured together",
+        ),
         ("typo", json!(true), "unknown field"),
     ] {
         let mut input = book.clone();
@@ -317,4 +321,263 @@ fn chapter_symlinks_use_the_actual_source_directory() {
         .as_str()
         .unwrap()
         .contains("## IP Memory Maps"));
+}
+
+fn locked_book() -> (tempfile::TempDir, Value) {
+    let content = format!(
+        "```memmap\nsource: ../maps/systems/mosaic_example.yaml\naddress_space: cpu\nview: summary\n```\n\n{}",
+        ip_fence("../maps/ips/timer.yaml", "registers")
+    );
+    let (dir, mut book) = native_book(&content);
+    std::fs::create_dir(dir.path().join("reference")).unwrap();
+    std::fs::write(
+        dir.path().join("reference/release.lock.json"),
+        include_str!("reference/release.lock.json").replace("../fixtures/", "../maps/"),
+    )
+    .unwrap();
+    std::fs::write(dir.path().join("book.toml"), "[book]\ntitle = 'Test'\n").unwrap();
+    book[0]["config"]["preprocessor"]["memmap"]["release-lock"] =
+        json!("reference/release.lock.json");
+    book[0]["config"]["preprocessor"]["memmap"]["provenance"] = json!("report.json");
+    (dir, book)
+}
+
+fn report(dir: &std::path::Path) -> Value {
+    serde_json::from_slice(&std::fs::read(dir.join("report.json")).unwrap()).unwrap()
+}
+
+#[test]
+fn locked_protocol_emits_deterministic_native_v2_provenance_with_exact_fragment_hashes() {
+    use mdbook_memmap::release::sha256;
+    let (dir, book) = locked_book();
+    let rendered = succeeded(book.clone());
+    assert!(rendered["items"][0]["Chapter"]["content"]
+        .as_str()
+        .unwrap()
+        .contains("0x40006004"));
+    let value = report(dir.path());
+    assert_eq!(value["format_version"], 2);
+    assert!(value.get("backend").is_none());
+    assert_eq!(value["mdbook_version"], "0.5.4");
+    assert_eq!(value["inputs"]["format_version"], 1);
+    assert_eq!(value["inputs"]["release"], "native-compat-1");
+    assert_eq!(
+        value["inputs"]["release_lock_sha256"],
+        sha256(&std::fs::read(dir.path().join("reference/release.lock.json")).unwrap())
+    );
+    assert_eq!(value["inputs"]["generator"]["kind"], "native-rust");
+    assert_eq!(value["inputs"]["generator"]["name"], "mdbook-memmap");
+    assert_eq!(
+        value["inputs"]["generator"]["version"],
+        env!("CARGO_PKG_VERSION")
+    );
+    assert_eq!(
+        value["inputs"]["generator"]["executable_sha256"],
+        sha256(&std::fs::read(env!("CARGO_BIN_EXE_mdbook-memmap")).unwrap())
+    );
+    assert_eq!(
+        value["inputs"]["generator"]["implementation_sha256"],
+        mdbook_memmap::provenance::generator_identity().unwrap()["implementation_sha256"]
+    );
+    assert_eq!(value["inputs"]["sources"].as_array().unwrap().len(), 3);
+    let selections = value["inputs"]["selections"].as_array().unwrap();
+    assert_eq!(selections.len(), 2);
+    for (index, reference, selector, name, source) in [
+        (
+            0,
+            include_str!("reference/system-summary-prefixed.md").to_owned(),
+            "address_space",
+            "cpu",
+            "../maps/systems/mosaic_example.yaml",
+        ),
+        (
+            1,
+            include_str!("reference/timer-registers-prefixed.md")
+                .replace("memmap-2-2", "memmap-1-2"),
+            "map",
+            "csr",
+            "../maps/ips/timer.yaml",
+        ),
+    ] {
+        assert_eq!(
+            selections[index]["id"],
+            format!("chapter-1-fence-{}", index + 1)
+        );
+        assert_eq!(
+            selections[index]["anchor_prefix"],
+            format!("memmap-1-{}", index + 1)
+        );
+        assert_eq!(selections[index][selector], name);
+        assert_eq!(selections[index]["source"], source);
+        assert_eq!(
+            selections[index]["source_roots"],
+            json!([dir.path().join("maps").canonicalize().unwrap()])
+        );
+        assert_eq!(
+            selections[index]["output_sha256"],
+            sha256(reference.as_bytes())
+        );
+    }
+    let first = std::fs::read(dir.path().join("report.json")).unwrap();
+    succeeded(book);
+    assert_eq!(
+        first,
+        std::fs::read(dir.path().join("report.json")).unwrap()
+    );
+}
+
+#[test]
+fn locked_books_relocate_without_changing_pins_selection_or_generator_identity() {
+    let (first, book) = locked_book();
+    succeeded(book);
+    let (second, book) = locked_book();
+    succeeded(book);
+    let mut reports = [report(first.path()), report(second.path())];
+    assert_ne!(reports[0]["source_roots"], reports[1]["source_roots"]);
+    for report in &mut reports {
+        report.as_object_mut().unwrap().remove("source_roots");
+        for selection in report["inputs"]["selections"].as_array_mut().unwrap() {
+            selection.as_object_mut().unwrap().remove("source_roots");
+        }
+    }
+    assert_eq!(reports[0], reports[1]);
+}
+
+#[test]
+fn failed_locked_builds_publish_nothing_and_preserve_prior_reports() {
+    for failure in [
+        "changed",
+        "deleted",
+        "unpinned",
+        "identity",
+        "entry",
+        "no-fences",
+        "later-fence",
+        "unused-pin",
+    ] {
+        let (dir, mut book) = locked_book();
+        let lock_path = dir.path().join("reference/release.lock.json");
+        let mut lock: Value = serde_json::from_slice(&std::fs::read(&lock_path).unwrap()).unwrap();
+        match failure {
+            "changed" => {
+                std::fs::write(dir.path().join("maps/ips/timer.yaml"), b"# changed\n").unwrap()
+            }
+            "deleted" => std::fs::remove_file(dir.path().join("maps/ips/timer.yaml")).unwrap(),
+            "unpinned" => {
+                lock["sources"]
+                    .as_array_mut()
+                    .unwrap()
+                    .retain(|pin| pin["vlnv"]["name"] != "timer");
+            }
+            "identity" => lock["sources"][0]["vlnv"]["version"] = json!("wrong"),
+            "entry" => lock["entry"]["address_space"] = json!("missing"),
+            "no-fences" => book[1]["items"][0]["Chapter"]["content"] = json!("# No inclusion"),
+            "later-fence" => {
+                let text = book[1]["items"][0]["Chapter"]["content"].as_str().unwrap();
+                book[1]["items"][0]["Chapter"]["content"] = json!(format!(
+                    "{text}\n{}",
+                    ip_fence("../maps/ips/absent.yaml", "summary")
+                ));
+            }
+            "unused-pin" => {
+                lock = serde_json::from_str(
+                    &include_str!("reference/combined.lock.json")
+                        .replace("../fixtures/", "../maps/"),
+                )
+                .unwrap();
+                std::fs::write(
+                    dir.path().join("maps/systems/rendering.yaml"),
+                    include_str!("fixtures/systems/rendering.yaml"),
+                )
+                .unwrap();
+                std::fs::write(
+                    dir.path().join("maps/ips/rendering.yaml"),
+                    b"# changed unused pin\n",
+                )
+                .unwrap();
+            }
+            _ => unreachable!(),
+        }
+        std::fs::write(&lock_path, serde_json::to_vec(&lock).unwrap()).unwrap();
+        std::fs::write(dir.path().join("report.json"), b"prior report").unwrap();
+        let output = invoke(&[], Some(book));
+        assert!(!output.status.success(), "{failure}");
+        assert!(output.stdout.is_empty(), "{failure}");
+        assert!(!output.stderr.is_empty(), "{failure}");
+        assert_eq!(
+            std::fs::read(dir.path().join("report.json")).unwrap(),
+            b"prior report"
+        );
+        assert!(!std::fs::read_dir(dir.path()).unwrap().any(|entry| entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".mdbook-memmap-")));
+    }
+}
+
+#[test]
+fn provenance_output_cannot_replace_inputs_configuration_executable_or_directories() {
+    for destination in [
+        "maps/destroy.json",
+        "src/destroy.json",
+        "book.toml",
+        "reference/release.lock.json",
+        "absent-parent/report.json",
+        "existing-directory",
+        env!("CARGO_BIN_EXE_mdbook-memmap"),
+    ] {
+        let (dir, mut book) = locked_book();
+        std::fs::create_dir(dir.path().join("existing-directory")).unwrap();
+        let original = std::fs::read(dir.path().join("book.toml")).unwrap();
+        book[0]["config"]["preprocessor"]["memmap"]["provenance"] = json!(destination);
+        let output = invoke(&[], Some(book));
+        assert!(!output.status.success(), "{destination}");
+        assert!(output.stdout.is_empty(), "{destination}");
+        assert!(!output.stderr.is_empty());
+        assert_eq!(
+            std::fs::read(dir.path().join("book.toml")).unwrap(),
+            original
+        );
+        assert!(!std::fs::read_dir(dir.path()).unwrap().any(|entry| entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".mdbook-memmap-")));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn provenance_rejects_symlink_outputs_and_actual_symlinked_chapter_or_config_targets() {
+    for target in ["symlink-output", "chapter-target", "config-target"] {
+        let (dir, mut book) = locked_book();
+        let outside = dir.path().join("outside.txt");
+        std::fs::write(&outside, b"preserve input").unwrap();
+        match target {
+            "symlink-output" => {
+                std::os::unix::fs::symlink(&outside, dir.path().join("report.json")).unwrap();
+            }
+            "chapter-target" => {
+                // A literal chapter may live outside the canonical book source tree.
+                let mut chapter = book[1]["items"][0].clone();
+                chapter["Chapter"]["content"] = json!("# Authored outside");
+                chapter["Chapter"]["source_path"] = json!("external.md");
+                chapter["Chapter"]["path"] = json!("external.md");
+                book[1]["items"].as_array_mut().unwrap().push(chapter);
+                std::os::unix::fs::symlink(&outside, dir.path().join("src/external.md")).unwrap();
+                book[0]["config"]["preprocessor"]["memmap"]["provenance"] = json!("outside.txt");
+            }
+            "config-target" => {
+                std::fs::remove_file(dir.path().join("book.toml")).unwrap();
+                std::os::unix::fs::symlink(&outside, dir.path().join("book.toml")).unwrap();
+                book[0]["config"]["preprocessor"]["memmap"]["provenance"] = json!("outside.txt");
+            }
+            _ => unreachable!(),
+        }
+        let output = invoke(&[], Some(book));
+        assert!(!output.status.success(), "{target}");
+        assert!(output.stdout.is_empty());
+        assert_eq!(std::fs::read(&outside).unwrap(), b"preserve input");
+    }
 }

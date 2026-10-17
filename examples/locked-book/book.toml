@@ -1,0 +1,11 @@
+[book]
+title = "Locked Native Memory Maps"
+src = "../book/src"
+
+[preprocessor.memmap]
+command = "mdbook-memmap"
+source-roots = ["../../tests/fixtures"]
+release-lock = "../../tests/reference/combined.lock.json"
+provenance = "memmap-provenance.json"
+renderers = ["html"]
+before = ["links"]

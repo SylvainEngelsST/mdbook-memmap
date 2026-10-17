@@ -2,7 +2,7 @@
 //! retain arbitrary precision; widths use checked 64-bit arithmetic.
 
 use num_bigint::BigUint;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -80,7 +80,8 @@ pub enum Usage {
     Reserved,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(deny_unknown_fields)]
 pub struct Vlnv {
     pub vendor: String,
     pub library: String,

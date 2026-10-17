@@ -1,8 +1,7 @@
 //! Add configuration without replacing existing user settings.
 
 use anyhow::{bail, Context, Result};
-use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::fs;
 use std::path::Path;
 use toml_edit::{value, Array, DocumentMut, Item, Table};
 
@@ -37,22 +36,8 @@ pub fn install(root: &Path) -> Result<bool> {
     before.push("links");
     settings["before"] = value(before);
     preprocessors.insert("memmap", Item::Table(settings));
-    let temporary = root.join(format!(".book.toml.memmap-{}.tmp", std::process::id()));
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&temporary)?;
-    let result = (|| -> Result<()> {
-        file.set_permissions(fs::metadata(&config)?.permissions())?;
-        file.write_all(doc.to_string().as_bytes())?;
-        file.sync_all()?;
-        fs::rename(&temporary, &config)?;
-        Ok(())
-    })();
-    if result.is_err() {
-        fs::remove_file(&temporary).context("cannot clean installer temporary file")?;
-    }
-    result.context("cannot update book.toml")?;
+    crate::artifacts::write_atomic(&config, doc.to_string().as_bytes())
+        .context("cannot update book.toml")?;
     Ok(true)
 }
 

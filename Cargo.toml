@@ -11,7 +11,7 @@ homepage = "https://github.com/SylvainEngelsST/mdbook-memmap"
 readme = "README.md"
 keywords = ["mdbook", "memory-map", "registers", "documentation"]
 categories = ["command-line-utilities", "development-tools"]
-include = ["src/**", "tests/**", "examples/**", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE"]
+include = ["src/**", "tests/**", "examples/**", "build.rs", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE"]
 
 [dependencies]
 anyhow = "1"
@@ -25,8 +25,7 @@ semver = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml_ng = "0.10"
+sha2 = "0.10"
+tempfile = "3"
 toml_edit = "0.22"
 yaml-rust2 = "0.10"
-
-[dev-dependencies]
-tempfile = "3"

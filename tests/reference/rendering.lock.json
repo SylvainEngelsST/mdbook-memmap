@@ -1,0 +1,30 @@
+{
+  "entry": {
+    "address_space": "wide",
+    "source": "../fixtures/systems/rendering.yaml"
+  },
+  "format_version": 1,
+  "release": "native-compat-1",
+  "sources": [
+    {
+      "path": "../fixtures/ips/rendering.yaml",
+      "sha256": "f555426b5a8ae7d9f20d3b8345fd2d6731eddaa16ed8dcd0edd09bca9ce0c6ff",
+      "vlnv": {
+        "library": "tests",
+        "name": "rendering",
+        "vendor": "example.org",
+        "version": "1.0"
+      }
+    },
+    {
+      "path": "../fixtures/systems/rendering.yaml",
+      "sha256": "dc0008afd3619e09529b25090efa86247610cb2f686cdb29ffad54fd4065adbf",
+      "vlnv": {
+        "library": "tests",
+        "name": "rendering_system",
+        "vendor": "example.org",
+        "version": "1.0"
+      }
+    }
+  ]
+}
