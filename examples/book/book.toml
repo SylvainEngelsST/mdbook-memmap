@@ -4,6 +4,6 @@ src = "src"
 
 [preprocessor.memmap]
 command = "mdbook-memmap"
-source-roots = ["."]
+source-roots = ["../../tests/fixtures"]
 renderers = ["html"]
 before = ["links"]

@@ -1,0 +1,73 @@
+schema_version: 1
+naming_profile: rds-v1
+kind: ip
+vlnv:
+  vendor: example.org
+  library: tests
+  name: rendering
+  version: "1.0"
+description: |
+  Authored **Markdown** and <em>HTML</em> remain intact.
+reset_types:
+  - name: HARD
+    description: "Power | reset & <reset> `bits`\r\nnext line"
+  - name: SOFT
+maps:
+  - name: csr
+    usage: register
+    size_bytes: 256
+    data_width_bits: 32
+    description: Register bank.
+    registers:
+      - name: CONTROL
+        offset: 0
+        width_bits: 128
+        description: "A | B & <em>tag</em> `code`\rnext line"
+        fields:
+          - name: LOW
+            lsb: 2
+            width_bits: 3
+            access: read-writeOnce
+            hwAccess: read-only
+            volatile: false
+            modified_write_value: zeroToToggle
+            read_action: clear
+            description: Low field is authored before HIGH.
+            resets:
+              - resetType: HARD
+                value: 5
+                mask: 3
+              - resetType: SOFT
+                value: 7
+                mask: 0
+          - name: HIGH
+            lsb: 32
+            width_bits: 80
+            access: no-access
+            hwAccess: no-access
+            volatile: false
+            resets:
+              - resetType: HARD
+                value: 0x80000000000000000001
+                mask: 0x7FFFFFFFFFFFFFFFFFFF
+      - name: MODE
+        offset: 16
+        width_bits: 8
+        fields:
+          - name: MODE
+            lsb: 3
+            width_bits: 1
+            access: writeOnce
+            hwAccess: write-only
+            volatile: true
+            modified_write_value: clear
+  - name: ram
+    usage: memory
+    size_bytes: 1
+    data_width_bits: 8
+    access: read-only
+    description: One byte of implemented storage.
+  - name: reserved
+    usage: reserved
+    size_bytes: 16
+    data_width_bits: 32

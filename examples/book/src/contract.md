@@ -1,7 +1,7 @@
 # Authoring Contract
 
-This checkpoint demonstrates literal authoring examples only. Active inclusions
-will become available after the native model and renderer are implemented.
+Longer outer Markdown fences preserve literal authoring examples. See
+[Native memory maps](memory-maps.md) for the corresponding rendered views.
 
 ````markdown
 ```memmap

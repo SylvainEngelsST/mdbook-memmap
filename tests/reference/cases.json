@@ -1,0 +1,16 @@
+[
+  {"name":"timer-summary","source":"ips/timer.yaml","map":"csr","view":"summary","prefix":""},
+  {"name":"timer-registers","source":"ips/timer.yaml","map":"csr","view":"registers","prefix":""},
+  {"name":"timer-summary-prefixed","source":"ips/timer.yaml","map":"csr","view":"summary","prefix":"memmap-2-1"},
+  {"name":"timer-registers-prefixed","source":"ips/timer.yaml","map":"csr","view":"registers","prefix":"memmap-2-2"},
+  {"name":"system-summary","source":"systems/mosaic_example.yaml","address_space":"cpu","view":"summary","prefix":""},
+  {"name":"system-registers","source":"systems/mosaic_example.yaml","address_space":"cpu","view":"registers","prefix":""},
+  {"name":"system-summary-prefixed","source":"systems/mosaic_example.yaml","address_space":"cpu","view":"summary","prefix":"memmap-1-1"},
+  {"name":"system-registers-prefixed","source":"systems/mosaic_example.yaml","address_space":"cpu","view":"registers","prefix":"memmap-1-2"},
+  {"name":"rich-summary","source":"ips/rendering.yaml","map":"csr","view":"summary","prefix":""},
+  {"name":"rich-registers","source":"ips/rendering.yaml","map":"csr","view":"registers","prefix":"memmap-3-1"},
+  {"name":"all-maps","source":"ips/rendering.yaml","view":"summary","prefix":""},
+  {"name":"memory","source":"ips/rendering.yaml","map":"ram","view":"summary","prefix":""},
+  {"name":"last-byte","source":"systems/rendering.yaml","address_space":"end32","view":"summary","prefix":""},
+  {"name":"wide-registers","source":"systems/rendering.yaml","address_space":"wide","view":"registers","prefix":"memmap-3-2"}
+]

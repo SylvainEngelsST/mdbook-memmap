@@ -4,11 +4,13 @@ Native Rust memory-map and register documentation for
 [mdBook](https://rust-lang.github.io/mdBook/), using reusable YAML IP definitions
 and hierarchical system maps.
 
-**Status: checkpoint 2, native model and hierarchy resolver ready for review.**
-This is not yet a functional replacement for the Python-backed preprocessor.
-Active `memmap` inclusions fail explicitly until native rendering is implemented.
-Books without active inclusions are preserved. No Python process or backend
-command is invoked.
+**Status: checkpoint 3, native rendering and mdBook integration ready for review.**
+Active `memmap` inclusions now render directly in Rust. Books without inclusions
+are preserved. No Python runtime, package installation, or backend command is
+needed by end users.
+
+Release-lock/provenance compatibility remains checkpoint 4. This build rejects
+those settings rather than silently producing an unqualified release book.
 
 ## Scope and Review Gates
 
@@ -34,7 +36,7 @@ mdbook-memmap install path/to/book
 Registry publication is not yet performed; `cargo install mdbook-memmap` will be
 documented when a release is published. Maintainers can distribute the compiled
 binary directly to users who do not have Cargo or network access.
-No Python runtime will be required for native book rendering.
+No Python runtime is required for native book rendering.
 
 `install` edits an existing `book.toml`, preserves comments and existing
 configuration, and is idempotent. Review its default root (`"."`, the book
@@ -54,8 +56,16 @@ mdbook-wavedrom. Its library exports `Memmap` implementing `Preprocessor`; the
 binary supports `--help`, `--version`, `supports html`, and `install [book-dir]`.
 It supports mdBook `>=0.5.4, <0.6.0` and HTML only.
 Protocol stdout contains JSON only; diagnostics use stderr.
-Book configuration remains scaffolded until checkpoint 3 wires native rendering.
-The library `Project` already enforces canonical source roots for source loading.
+`source-roots` is required for active inclusions and must be a nonempty array of
+directories relative to the book root (absolute paths also work). Both direct
+sources and transitive references must stay inside these canonical roots.
+Only accessed source files are loaded; source directories must not change during
+a build. Chapter paths, including symlinks, are resolved to their actual source
+directory before resolving the fence's `source`.
+
+The configuration is strict: unknown keys/types fail. Standard mdBook keys
+`command`, `renderers`, `before`, `after`, and `optional = false` are accepted.
+`optional = true` is rejected because validation failures must abort the build.
 
 ## Unchanged Fence Options
 
@@ -89,9 +99,48 @@ The existing YAML source contract remains the compatibility target: schema
 version 1, `rds-v1` naming, separate IP/system definitions, software access,
 `hwAccess`, volatility, reset types, and reusable hierarchy. Python remains the
 reference for renderer parity, not a runtime dependency or fallback.
-The old `backend`, `backend-args`, and `backend-timeout-seconds` settings are not
-part of the native architecture; migration diagnostics and strict configuration
-will be implemented with the integrated renderer.
+When migrating a Python-backed book, remove `backend`, `backend-args`, and
+`backend-timeout-seconds`; each causes an explicit migration diagnostic. The
+fences do not change. `release-lock` and `provenance` deliberately fail until
+checkpoint 4; keep using the qualified release tooling for locked builds.
+
+## Native Markdown Rendering
+
+```rust,no_run
+use mdbook_memmap::{
+    fences::View,
+    markdown::{render, Source},
+    project::Project,
+};
+use std::path::PathBuf;
+
+let root = PathBuf::from("released-maps").canonicalize()?;
+let mut project = Project::new(std::slice::from_ref(&root))?;
+let ip = project.load(&root.join("ips/timer.yaml"))?;
+let markdown = render(Source::Ip(&ip), Some("csr"), View::Registers, "")?;
+let system = project.resolve(&root.join("systems/soc.yaml"), "cpu")?;
+let overview = render(Source::System(&system), None, View::Summary, "memmap-1-1")?;
+# Ok::<(), anyhow::Error>(())
+```
+
+Library rendering expects validated definitions from the loader or resolver;
+do not mutate inputs to violate their invariants. IP rendering can select one
+map or all maps. System rendering uses a resolved address space; a local map
+selector is invalid there. Detailed register views reject memory/reserved maps.
+
+The renderer preserves authored Markdown descriptions, escapes table cells,
+distinguishes implemented and allocated extents, fills reserved field gaps,
+and retains partial/missing reset semantics. Table fields are sorted by bit
+position while their descriptions stay in authored order. Arbitrary-precision
+addresses and reset values are never truncated. Each mdBook inclusion receives
+a unique `memmap-CHAPTER-FENCE` namespace, including nested chapters and repeated
+views; library callers can supply their own lowercase ASCII namespace.
+
+Fourteen checked-in outputs from the independent Python reference exporter are
+compared byte-for-byte in Rust tests, including rich descriptions, memory and
+reserved maps, the last 32-bit address, and addresses/resets wider than 64 bits.
+The legacy `Generated by rds-memmap` comment is intentionally preserved for
+compatibility; it does **not** indicate a Python/backend invocation.
 
 ## Native Model and Hierarchy API
 
@@ -150,11 +199,15 @@ there is no silent 64-bit truncation. Widths and bit indices use checked `u64`
 arithmetic. As explicit operational limits, YAML nesting and source-reference
 depth are limited to 128 levels, and width/index values above `u64::MAX` fail.
 These limits fail diagnostically instead of overflowing or exhausting the stack.
+Reset bit strings in detailed Markdown have a maximum field width of 65,536
+bits; wider displayed resets fail with `[markdown-width]` rather than allocating
+unbounded output or silently truncating. Summary rendering is unaffected.
 
-The [fixtures](tests/fixtures/) are copied compatibility inputs from the accepted
-rds-designspec timer/subsystem/system example. The native tests assert all four
-reference addresses, shared IP identity, and the same access/reset semantics.
-No Python executable is needed to run the Rust test suite.
+The timer/subsystem/system [fixtures](tests/fixtures/) are copied compatibility
+inputs from the accepted rds-designspec example. Additional rendering fixtures
+exercise wide values, table escaping, and partial resets. The native tests assert
+all four reference addresses, shared IP identity, and the same access/reset
+semantics. No Python executable is needed to run the Rust test suite.
 
 ## Development and Packaging
 
@@ -162,14 +215,36 @@ No Python executable is needed to run the Rust test suite.
 cargo fmt --all -- --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked --all-targets
+cargo test --locked --doc
 cargo doc --locked --no-deps
 cargo package --locked
 ```
 
 Keep `CARGO_HOME` and `CARGO_TARGET_DIR` on project storage in quota-limited
 environments. After dependencies are cached, use `--offline`. The small
-[example book](examples/book/) contains literal examples and can be built with
-mdBook after putting the compiled binary on `PATH`.
+[example book](examples/book/) contains literal fences and active IP/system
+summary/detail inclusions. Build it after putting the compiled binary on `PATH`:
+
+```sh
+cargo build --locked
+PATH="$PWD/target/debug:$PATH" mdbook build examples/book
+MDBOOK="$(command -v mdbook)" cargo test --locked --test book -- --ignored
+```
+
+The explicitly enabled book test requires mdBook 0.5.4. It builds twice with
+only the native binary directory on the child process's `PATH`, checks identical
+HTML bytes, all four system register addresses, 18 tables, 23 unique memory-map
+anchors, and their links. CI runs this test as well as the Python-free Rust suite.
+If using `CARGO_TARGET_DIR`, adjust the binary path in the build command.
+
+Only maintainers regenerating the parity goldens need the Python reference:
+
+```sh
+python3 tests/reference/generate.py /path/to/qualified/bin/rds-memmap
+```
+
+Goldens were generated from the accepted rds-designspec implementation
+(`897fb47`). Do not regenerate them using the renderer under test.
 
 ## License
 

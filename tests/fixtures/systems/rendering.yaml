@@ -1,0 +1,35 @@
+schema_version: 1
+naming_profile: rds-v1
+kind: system
+vlnv:
+  vendor: example.org
+  library: tests
+  name: rendering_system
+  version: "1.0"
+description: A system description.
+address_spaces:
+  - name: end32
+    description: The final byte of a 32-bit address space.
+    address_width_bits: 32
+    data_width_bits: 8
+    size_bytes: 0x100000000
+    instances:
+      - name: LAST
+        description: A described instance.
+        source: ../ips/rendering.yaml
+        mappings:
+          - target: ram
+            base: 0xFFFFFFFF
+            size_bytes: 1
+  - name: wide
+    address_width_bits: 128
+    data_width_bits: 32
+    size_bytes: 0x100000000000000000000000000000000
+    instances:
+      - name: WIDE
+        source: ../ips/rendering.yaml
+        description: Allocation tail is not implemented storage.
+        mappings:
+          - target: csr
+            base: 0x123456789000000000
+            size_bytes: 4096
