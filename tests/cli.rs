@@ -79,7 +79,7 @@ fn active_fences_fail_without_partial_book_json() {
     assert!(output.stdout.is_empty());
     let errors = String::from_utf8_lossy(&output.stderr);
     assert!(errors.contains("page.md:1"));
-    assert!(errors.contains("source-roots is required"));
+    assert!(errors.contains("cannot resolve chapter source"));
 }
 
 #[test]
@@ -131,7 +131,7 @@ fn native_book(content: &str) -> (tempfile::TempDir, Value) {
     let mut book = input(content);
     book[0]["root"] = json!(dir.path());
     book[0]["config"]["preprocessor"]["memmap"] = json!({
-        "source-roots": ["maps"], "command": "mdbook-memmap",
+        "command": "mdbook-memmap",
         "renderers": ["html"], "before": ["links"], "after": [], "optional": false
     });
     (dir, book)
@@ -182,6 +182,63 @@ fn native_protocol_renders_without_python_or_backend_on_path() {
 }
 
 #[test]
+fn chapter_paths_and_transitive_references_need_no_roots_or_configuration() {
+    let (dir, mut book) = native_book("");
+    let external = tempfile::tempdir_in(dir.path().parent().unwrap()).unwrap();
+    for folder in ["ips", "systems"] {
+        std::fs::create_dir(external.path().join(folder)).unwrap();
+    }
+    for name in [
+        "ips/timer.yaml",
+        "systems/timer_cluster.yaml",
+        "systems/mosaic_example.yaml",
+    ] {
+        std::fs::copy(
+            dir.path().join("maps").join(name),
+            external.path().join(name),
+        )
+        .unwrap();
+    }
+    book[0]["config"]
+        .as_object_mut()
+        .unwrap()
+        .remove("preprocessor");
+    for source in [
+        external
+            .path()
+            .join("systems/mosaic_example.yaml")
+            .to_str()
+            .unwrap()
+            .to_owned(),
+        format!(
+            "../../{}/systems/mosaic_example.yaml",
+            external.path().file_name().unwrap().to_str().unwrap()
+        ),
+    ] {
+        book[1]["items"][0]["Chapter"]["content"] = json!(format!(
+            "```memmap\nsource: {source}\naddress_space: cpu\nview: registers\n```\n"
+        ));
+        let output = succeeded(book.clone());
+        assert!(output["items"][0]["Chapter"]["content"]
+            .as_str()
+            .unwrap()
+            .contains("0x40006004"));
+    }
+    let cluster = include_str!("fixtures/systems/timer_cluster.yaml").replace(
+        "../ips/timer.yaml",
+        external.path().join("ips/timer.yaml").to_str().unwrap(),
+    );
+    std::fs::write(dir.path().join("maps/systems/timer_cluster.yaml"), cluster).unwrap();
+    book[1]["items"][0]["Chapter"]["content"] = json!(
+        "```memmap\nsource: ../maps/systems/mosaic_example.yaml\naddress_space: cpu\nview: registers\n```\n"
+    );
+    assert!(succeeded(book)["items"][0]["Chapter"]["content"]
+        .as_str()
+        .unwrap()
+        .contains("0x40005004"));
+}
+
+#[test]
 fn nested_chapters_and_repeated_views_have_stable_distinct_namespaces() {
     let literal = "````markdown\n```memmap\nliteral\n```\n````\n";
     let (_dir, mut book) = native_book(literal);
@@ -225,9 +282,17 @@ fn strict_native_configuration_rejects_obsolete_unsafe_and_unknown_settings() {
         ("backend-args", json!([]), "obsolete setting"),
         ("backend-timeout-seconds", json!(60), "obsolete setting"),
         ("optional", json!(true), "optional=true"),
-        ("source-roots", json!([]), "at least one"),
-        ("source-roots", json!("maps"), "invalid preprocessor.memmap"),
-        ("source-roots", json!(["missing"]), "invalid source roots"),
+        ("source-roots", json!([]), "source-roots has been removed"),
+        (
+            "source-roots",
+            json!("maps"),
+            "source-roots has been removed",
+        ),
+        (
+            "source-roots",
+            json!(["maps"]),
+            "source-roots has been removed",
+        ),
         ("release-lock", json!("lock.json"), "configured together"),
         (
             "provenance",
@@ -259,7 +324,6 @@ fn any_failed_inclusion_aborts_without_partial_json() {
     .unwrap();
     for fence in [
         ip_fence("../maps/ips/missing.yaml", "summary"),
-        ip_fence("../outside.yaml", "summary"),
         ip_fence("../maps/ips/timer.yaml", "summary").replace("map: csr", "map: missing"),
         ip_fence("../maps/ips/timer.yaml", "summary").replace("map: csr", "address_space: cpu"),
         ip_fence("../maps/systems/mosaic_example.yaml", "summary"),
@@ -409,10 +473,7 @@ fn locked_protocol_emits_deterministic_native_v2_provenance_with_exact_fragment_
         );
         assert_eq!(selections[index][selector], name);
         assert_eq!(selections[index]["source"], source);
-        assert_eq!(
-            selections[index]["source_roots"],
-            json!([dir.path().join("maps").canonicalize().unwrap()])
-        );
+        assert!(selections[index].get("source_roots").is_none());
         assert_eq!(
             selections[index]["output_sha256"],
             sha256(reference.as_bytes())
@@ -432,14 +493,8 @@ fn locked_books_relocate_without_changing_pins_selection_or_generator_identity()
     succeeded(book);
     let (second, book) = locked_book();
     succeeded(book);
-    let mut reports = [report(first.path()), report(second.path())];
-    assert_ne!(reports[0]["source_roots"], reports[1]["source_roots"]);
-    for report in &mut reports {
-        report.as_object_mut().unwrap().remove("source_roots");
-        for selection in report["inputs"]["selections"].as_array_mut().unwrap() {
-            selection.as_object_mut().unwrap().remove("source_roots");
-        }
-    }
+    let reports = [report(first.path()), report(second.path())];
+    assert!(reports[0].get("source_roots").is_none());
     assert_eq!(reports[0], reports[1]);
 }
 
@@ -519,7 +574,7 @@ fn failed_locked_builds_publish_nothing_and_preserve_prior_reports() {
 #[test]
 fn provenance_output_cannot_replace_inputs_configuration_executable_or_directories() {
     for destination in [
-        "maps/destroy.json",
+        "maps/ips/timer.yaml",
         "src/destroy.json",
         "book.toml",
         "reference/release.lock.json",

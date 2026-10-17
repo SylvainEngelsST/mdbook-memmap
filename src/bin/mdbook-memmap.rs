@@ -32,9 +32,7 @@ fn run(cli: Cli) -> Result<()> {
         }
         Some(Command::Install { dir }) => {
             if install::install(&dir)? {
-                eprintln!(
-                    "mdbook-memmap: installed configuration; review source-roots before building"
-                );
+                eprintln!("mdbook-memmap: installed configuration");
             } else {
                 eprintln!("mdbook-memmap: existing configuration left unchanged");
             }

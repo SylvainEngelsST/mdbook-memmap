@@ -26,7 +26,6 @@ use std::sync::Arc;
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 struct Config {
-    source_roots: Vec<PathBuf>,
     optional: Option<bool>,
     release_lock: Option<PathBuf>,
     provenance: Option<PathBuf>,
@@ -45,6 +44,9 @@ fn configuration(ctx: &PreprocessorContext) -> Result<Option<Config>> {
     let Some(value) = value else {
         return Ok(None);
     };
+    if value.get("source-roots").is_some() {
+        bail!("source-roots has been removed; source paths resolve relative to the chapter or referencing YAML file");
+    }
     for key in ["backend", "backend-args", "backend-timeout-seconds"] {
         if value.get(key).is_some() {
             bail!("obsolete setting {key:?}: native mdbook-memmap does not use a backend; remove backend settings");
@@ -52,9 +54,6 @@ fn configuration(ctx: &PreprocessorContext) -> Result<Option<Config>> {
     }
     let settings: Config =
         serde_json::from_value(value).context("invalid preprocessor.memmap configuration")?;
-    if settings.source_roots.is_empty() {
-        bail!("source-roots must contain at least one allowed directory");
-    }
     if settings.optional == Some(true) {
         bail!("optional=true is unsupported: memory-map validation must fail the book build");
     }
@@ -109,20 +108,13 @@ impl Preprocessor for Memmap {
         if let Some(settings) = &settings {
             if let Some(file) = &settings.release_lock {
                 let lock = Arc::new(release::ReleaseLock::load(&ctx.root.join(file))?);
-                let mut project = project::Project::with_release_lock(
-                    &settings
-                        .source_roots
-                        .iter()
-                        .map(|root| ctx.root.join(root))
-                        .collect::<Vec<_>>(),
-                    Arc::clone(&lock),
-                )?;
+                let mut project = project::Project::with_release_lock(Arc::clone(&lock));
                 lock.verify_inventory(&mut project)?;
                 build.project = Some(project);
                 build.release_lock = Some(lock);
             }
         }
-        process_items(&mut book.items, ctx, settings.as_ref(), &mut build)?;
+        process_items(&mut book.items, ctx, &mut build)?;
         if let Some(lock) = &build.release_lock {
             provenance::publish(
                 ctx,
@@ -146,7 +138,6 @@ impl Preprocessor for Memmap {
 fn process_items(
     items: &mut [BookItem],
     ctx: &PreprocessorContext,
-    settings: Option<&Config>,
     build: &mut Build,
 ) -> Result<()> {
     for item in items {
@@ -175,9 +166,6 @@ fn process_items(
             if !inclusions.is_empty() {
                 let first_line = inclusions[0].line;
                 let location = format!("{}:{first_line}", path.display());
-                let settings = settings.with_context(|| {
-                    format!("{location}: [preprocessor.memmap] with source-roots is required")
-                })?;
                 if chapter.source_path.is_none() && chapter.path.is_none() {
                     bail!("{location}: an active inclusion needs a chapter source_path or path");
                 }
@@ -188,19 +176,7 @@ fn process_items(
                     .canonicalize()
                     .with_context(|| format!("{location}: cannot resolve chapter source"))?;
                 let directory = source.parent().context("chapter has no parent directory")?;
-                let project = match &mut build.project {
-                    Some(project) => project,
-                    slot @ None => slot.insert(
-                        project::Project::new(
-                            &settings
-                                .source_roots
-                                .iter()
-                                .map(|root| ctx.root.join(root))
-                                .collect::<Vec<_>>(),
-                        )
-                        .with_context(|| format!("{location}: invalid source roots"))?,
-                    ),
-                };
+                let project = build.project.get_or_insert_with(project::Project::new);
                 let mut output = String::new();
                 let mut end = 0;
                 for (index, inclusion) in inclusions.iter().enumerate() {
@@ -226,7 +202,7 @@ fn process_items(
                             .context("rendered source must be pinned")?;
                         let mut selection = serde_json::json!({
                             "id": format!("chapter-{}-fence-{}", build.chapter_id, index + 1),
-                            "source": pin.path, "source_roots": project.source_roots(),
+                            "source": pin.path,
                             "view": match inclusion.fence.view {
                                 fences::View::Summary => "summary", fences::View::Registers => "registers",
                             },
@@ -249,7 +225,7 @@ fn process_items(
                 output.push_str(&chapter.content[end..]);
                 chapter.content = output;
             }
-            process_items(&mut chapter.sub_items, ctx, settings, build)?;
+            process_items(&mut chapter.sub_items, ctx, build)?;
         }
     }
     Ok(())

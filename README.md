@@ -40,14 +40,12 @@ binary directly to users who do not have Cargo or network access.
 No Python runtime is required for native book rendering.
 
 `install` edits an existing `book.toml`, preserves comments and existing
-configuration, and is idempotent. Review its default root (`"."`, the book
-directory) and narrow it to the released map directories needed by the book.
+configuration, and is idempotent.
 No JavaScript assets are required.
 
 ```toml
 [preprocessor.memmap]
 command = "mdbook-memmap"
-source-roots = ["../released-maps"]
 renderers = ["html"]
 before = ["links"]
 ```
@@ -57,12 +55,13 @@ mdbook-wavedrom. Its library exports `Memmap` implementing `Preprocessor`; the
 binary supports `--help`, `--version`, `supports html`, and `install [book-dir]`.
 It supports mdBook `>=0.5.4, <0.6.0` and HTML only.
 Protocol stdout contains JSON only; diagnostics use stderr.
-`source-roots` is required for active inclusions and must be a nonempty array of
-directories relative to the book root (absolute paths also work). Both direct
-sources and transitive references must stay inside these canonical roots.
-Only accessed source files are loaded; source directories must not change during
-a build. Chapter paths, including symlinks, are resolved to their actual source
-directory before resolving the fence's `source`.
+No source-directory configuration is needed. A fence's `source` resolves relative
+to its containing chapter; IP/system references resolve relative to their YAML
+file. Absolute paths also work. Chapter paths, including symlinks, resolve to
+their actual source directory. Paths may point outside the book directory.
+Only referenced files are loaded, except that locked builds verify every pin.
+Sources must not change during a build. Build only trusted books and YAML:
+there is no directory allowlist restricting local file references.
 
 The configuration is strict: unknown keys/types fail. Standard mdBook keys
 `command`, `renderers`, `before`, `after`, and `optional = false` are accepted.
@@ -86,7 +85,7 @@ view: registers
 
 | Property | Usage |
 |----------|-------|
-| `source` | Required nonempty string. YAML path relative to the containing chapter; the native library enforces canonical paths and allowed roots. |
+| `source` | Required nonempty string. YAML path relative to the containing chapter, or an absolute path. |
 | `view` | Required `summary` or `registers`. |
 | `map` | Exact IP-local map name; required for IP inputs and mutually exclusive with `address_space`. |
 | `address_space` | Exact system address-space name; required for system inputs and mutually exclusive with `map`. |
@@ -104,6 +103,8 @@ When migrating a Python-backed book, remove `backend`, `backend-args`, and
 `backend-timeout-seconds`; each causes an explicit migration diagnostic. The
 fences do not change. Configure `release-lock` and `provenance` together for
 locked builds; neither setting is optional when the other is present.
+Remove the obsolete `source-roots` setting from existing book configurations;
+it is no longer accepted or needed.
 
 ## Native Markdown Rendering
 
@@ -116,7 +117,7 @@ use mdbook_memmap::{
 use std::path::PathBuf;
 
 let root = PathBuf::from("released-maps").canonicalize()?;
-let mut project = Project::new(std::slice::from_ref(&root))?;
+let mut project = Project::new();
 let ip = project.load(&root.join("ips/timer.yaml"))?;
 let markdown = render(Source::Ip(&ip), Some("csr"), View::Registers, "")?;
 let system = project.resolve(&root.join("systems/soc.yaml"), "cpu")?;
@@ -149,7 +150,7 @@ compatibility; it does **not** indicate a Python/backend invocation.
 use mdbook_memmap::project::Project;
 use std::path::PathBuf;
 
-let mut project = Project::new(&[PathBuf::from("released-maps")])?;
+let mut project = Project::new();
 let view = project.resolve(
     &PathBuf::from("released-maps/systems/soc.yaml"), "cpu"
 )?;
@@ -183,7 +184,7 @@ hardware-write volatility, and reset references/widths/duplicates. Unspecified
 resets stay unspecified; zero masks do not imply retention; masked-out value bits
 are not zeroed. Memory/reserved maps remain distinct from register maps.
 
-Hierarchy checks cover file existence, canonical allowed roots, symlink escapes,
+Hierarchy checks cover file existence, canonical file identity,
 cycles, unique VLNV-to-file identity, target existence, complete allocation fit,
 overlaps including allocation tails, absolute register alignment, and ambiguous
 flattened instance/map/reset names. A tail allocation does not enlarge implemented
@@ -226,7 +227,6 @@ Consuming that lock in mdBook requires only the native binary:
 ```toml
 [preprocessor.memmap]
 command = "mdbook-memmap"
-source-roots = ["../released-maps"]
 release-lock = "../inputs.lock.json"
 provenance = "memmap-provenance.json"
 renderers = ["html"]
@@ -235,8 +235,8 @@ before = ["links"]
 
 Configuration paths are relative to the book root; pin paths and the entry
 source inside a lock are relative to the lock's directory. Locks are portable
-when moved together with their source trees. The configured canonical roots
-still apply to every pinned and transitively referenced source.
+when moved together with their source trees. Every loaded source must be pinned,
+regardless of its directory.
 
 Native verification:
 
@@ -251,7 +251,7 @@ Native verification:
   and canonical pin paths immediately before publishing provenance.
 - Requires at least one active inclusion in a locked book.
 
-Use `Project::with_release_lock(roots, Arc<ReleaseLock>)` for library loading
+Use `Project::with_release_lock(Arc<ReleaseLock>)` for library loading
 with pre-parse pin checks, and call `ReleaseLock::verify_inventory` before use.
 The mdBook integration performs the complete verification/publishing lifecycle.
 Do not use `Project::new` alone as a substitute for locked loading.
@@ -267,25 +267,24 @@ relative source records, and ordered selection records with fragment hashes.
 |----------|---------|
 | `adapter` | `mdbook-memmap` package name and version. |
 | `mdbook_version` | Calling mdBook version. |
-| `source_roots` | Canonical allowed roots for this invocation. |
 | `inputs.release` / `inputs.release_lock_sha256` | Release label and SHA-256 of exact lock bytes. |
 | `inputs.sources` | Complete pins sorted by their original relative path. |
 | `inputs.generator.kind` | `native-rust`, never a fabricated Python identity. |
 | `inputs.generator.name` / `version` | Native package identity. |
 | `inputs.generator.implementation_sha256` | SHA-256 of compact UTF-8 JSON mapping sorted package filenames to their SHA-256 values. Includes every Rust source, the build script, Cargo manifest, and Cargo lock, embedded at compile time. |
 | `inputs.generator.executable_sha256` | SHA-256 of the running executable. For a library embedding this is the host executable containing the engine. |
-| `inputs.selections` | Preorder inclusion ID, lock-relative source, canonical roots, view, selector, anchor prefix, and `output_sha256` of exact generated UTF-8 Markdown. |
+| `inputs.selections` | Preorder inclusion ID, lock-relative source, view, selector, anchor prefix, and `output_sha256` of exact generated UTF-8 Markdown. |
 
-Reports are deterministic for the same executable, paths, lock bytes, and
-selections. Relocation changes the recorded absolute roots, but not relative
-pins, selection fragment hashes, or generator identity. Different compiler,
+Reports are deterministic for the same executable, lock bytes, and selections,
+including after relocating the complete input tree. No absolute source roots
+are recorded. Different compiler,
 linker, build paths, or packaging normalization can change executable and/or
 implementation identity; compare the actual qualified artifact, not just its
 version string.
 
 Provenance is atomically replaced only after all inclusions and release checks
-succeed. Its parent must already exist. It cannot overwrite a source tree,
-chapter input (including a symlink target), lock, configuration, or running
+succeed. Its parent must already exist. It cannot overwrite a loaded YAML input,
+chapter source tree or input (including a symlink target), lock, configuration, or running
 executable, and cannot replace a symbolic link. Failed builds preserve any
 previous report; **always check the build exit status** rather than treating a
 pre-existing report as proof of a successful rebuild.

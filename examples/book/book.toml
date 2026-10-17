@@ -3,7 +3,6 @@ title = "Memory Map Example"
 src = "src"
 
 [preprocessor.memmap]
-command = "mdbook-memmap"
-source-roots = ["../../tests/fixtures"]
+command = "../../bin/mdbook-memmap"
 renderers = ["html"]
 before = ["links"]

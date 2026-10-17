@@ -1,4 +1,4 @@
-//! Canonical-root restricted, per-build source snapshot and hierarchy resolver.
+//! Per-build source snapshot and hierarchy resolver with canonical file identity.
 
 use crate::{loader, model::*, release::ReleaseLock};
 use anyhow::{bail, Context, Result};
@@ -7,8 +7,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+#[derive(Default)]
 pub struct Project {
-    roots: Vec<PathBuf>,
     definitions: BTreeMap<PathBuf, Arc<Definition>>,
     identities: BTreeMap<Vlnv, PathBuf>,
     snapshots: BTreeMap<PathBuf, Vec<u8>>,
@@ -16,39 +16,15 @@ pub struct Project {
 }
 
 impl Project {
-    pub fn new(roots: &[PathBuf]) -> Result<Self> {
-        if roots.is_empty() {
-            bail!("[source-root] at least one source root required");
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_release_lock(release_lock: Arc<ReleaseLock>) -> Self {
+        Self {
+            release_lock: Some(release_lock),
+            ..Self::new()
         }
-        let roots = roots
-            .iter()
-            .map(|root| {
-                let path = root
-                    .canonicalize()
-                    .with_context(|| format!("{} [source-root]", root.display()))?;
-                if !path.is_dir() {
-                    bail!("{} [source-root] root is not a directory", path.display());
-                }
-                Ok(path)
-            })
-            .collect::<Result<_>>()?;
-        Ok(Self {
-            roots,
-            definitions: BTreeMap::new(),
-            identities: BTreeMap::new(),
-            snapshots: BTreeMap::new(),
-            release_lock: None,
-        })
-    }
-
-    pub fn with_release_lock(roots: &[PathBuf], release_lock: Arc<ReleaseLock>) -> Result<Self> {
-        let mut project = Self::new(roots)?;
-        project.release_lock = Some(release_lock);
-        Ok(project)
-    }
-
-    pub fn source_roots(&self) -> &[PathBuf] {
-        &self.roots
     }
 
     pub fn definitions(&self) -> impl Iterator<Item = &Arc<Definition>> {
@@ -70,16 +46,8 @@ impl Project {
     }
 
     fn canonical(&self, file: &Path) -> Result<PathBuf> {
-        let path = file
-            .canonicalize()
-            .with_context(|| format!("{} [source-read]", file.display()))?;
-        if !self.roots.iter().any(|root| path.starts_with(root)) {
-            bail!(
-                "{} [source-root] source outside configured roots",
-                path.display()
-            );
-        }
-        Ok(path)
+        file.canonicalize()
+            .with_context(|| format!("{} [source-read]", file.display()))
     }
 
     fn load_inner(&mut self, file: &Path, active: &mut Vec<PathBuf>) -> Result<Arc<Definition>> {

@@ -26,9 +26,6 @@ pub fn install(root: &Path) -> Result<bool> {
     }
     let mut settings = Table::new();
     settings["command"] = value("mdbook-memmap");
-    let mut roots = Array::new();
-    roots.push(".");
-    settings["source-roots"] = value(roots);
     let mut renderers = Array::new();
     renderers.push("html");
     settings["renderers"] = value(renderers);
@@ -55,6 +52,7 @@ mod tests {
         assert!(installed.contains("# Keep me"));
         assert!(installed.contains("title = 'Example'"));
         assert!(!installed.contains("backend"));
+        assert!(!installed.contains("source-roots"));
         assert!(!install(dir.path()).unwrap());
         assert_eq!(installed, fs::read_to_string(&path).unwrap());
     }
@@ -63,7 +61,7 @@ mod tests {
     fn existing_configuration_is_not_overwritten() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("book.toml");
-        let original = "[preprocessor.memmap]\nsource-roots = ['/released']\n";
+        let original = "[preprocessor.memmap]\ncommand = 'custom-memmap'\n";
         fs::write(&path, original).unwrap();
         assert!(!install(dir.path()).unwrap());
         assert_eq!(original, fs::read_to_string(&path).unwrap());

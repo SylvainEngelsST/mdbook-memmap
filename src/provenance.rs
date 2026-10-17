@@ -56,10 +56,7 @@ fn destination(
         Err(error) => return Err(error).context("cannot resolve book configuration"),
     };
     if path.is_symlink()
-        || project
-            .source_roots()
-            .iter()
-            .any(|root| path.starts_with(root))
+        || project.snapshots().contains_key(&path)
         || path.starts_with(chapter_root)
         || chapters.contains(&path)
         || path == lock.file()
@@ -67,7 +64,7 @@ fn destination(
         || config_target.as_ref() == Some(&path)
         || path == std::env::current_exe()?.canonicalize()?
     {
-        bail!("{} [provenance-output] provenance cannot overwrite inputs, source trees, configuration, or the executable", path.display());
+        bail!("{} [provenance-output] provenance cannot overwrite loaded inputs, chapter sources, configuration, or the executable", path.display());
     }
     Ok(path)
 }
@@ -91,7 +88,6 @@ pub(crate) fn publish(
         "format_version": 2,
         "adapter": {"name": env!("CARGO_PKG_NAME"), "version": env!("CARGO_PKG_VERSION")},
         "mdbook_version": ctx.mdbook_version,
-        "source_roots": project.source_roots(),
         "inputs": {
             "format_version": 1, "release": lock.release(), "release_lock_sha256": lock.digest(),
             "sources": pins, "generator": generator_identity()?, "selections": selections,

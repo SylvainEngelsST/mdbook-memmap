@@ -38,7 +38,7 @@ impl Fixture {
         self.root().join("systems/mosaic_example.yaml")
     }
     fn project(&self) -> Project {
-        Project::new(&[self.root().into()]).unwrap()
+        Project::new()
     }
     fn write(&self, path: &Path, text: &str, mutate: impl FnOnce(&mut Value)) {
         let mut value = serde_yaml_ng::from_str(text).unwrap();
@@ -462,12 +462,8 @@ fn snapshots_reuse_definitions_until_new_project_and_clear_after_errors() {
 }
 
 #[test]
-fn source_roots_and_view_kind_are_enforced() {
+fn view_kind_missing_views_and_invalid_source_bytes_are_rejected() {
     let fixture = Fixture::new();
-    assert!(Project::new(&[]).is_err());
-    assert!(Project::new(&[fixture.ip()]).is_err());
-    let mut project = Project::new(&[fixture.root().join("systems")]).unwrap();
-    error(|| project.load(&fixture.system()), "source-root");
     error(
         || fixture.project().resolve(&fixture.ip(), "cpu"),
         "view-kind",
@@ -482,7 +478,7 @@ fn source_roots_and_view_kind_are_enforced() {
 
 #[cfg(unix)]
 #[test]
-fn canonical_roots_reject_symlink_escape_and_accept_reuse() {
+fn canonical_paths_accept_external_symlinks_and_reuse_file_identity() {
     use std::os::unix::fs::symlink;
     let fixture = Fixture::new();
     let outside = tempfile::tempdir().unwrap();
@@ -490,8 +486,7 @@ fn canonical_roots_reject_symlink_escape_and_accept_reuse() {
     fs::write(&external, TIMER).unwrap();
     let link = fixture.root().join("link.yaml");
     symlink(&external, &link).unwrap();
-    error(|| fixture.project().load(&link), "source-root");
-    let mut project = Project::new(&[fixture.root().into(), outside.path().into()]).unwrap();
+    let mut project = Project::new();
     let first = project.load(&link).unwrap();
     assert!(Arc::ptr_eq(&first, &project.load(&external).unwrap()));
 }

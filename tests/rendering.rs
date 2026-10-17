@@ -24,7 +24,7 @@ fn fixtures() -> PathBuf {
 #[test]
 fn matches_independent_python_reference_byte_for_byte() {
     let root = fixtures();
-    let mut project = Project::new(std::slice::from_ref(&root)).unwrap();
+    let mut project = Project::new();
     let cases: Vec<Case> = serde_json::from_str(include_str!("reference/cases.json")).unwrap();
     assert_eq!(cases.len(), 14);
     for case in cases {
@@ -55,7 +55,7 @@ fn matches_independent_python_reference_byte_for_byte() {
 #[test]
 fn all_generated_links_resolve_and_anchors_are_unique() {
     let root = fixtures();
-    let mut project = Project::new(std::slice::from_ref(&root)).unwrap();
+    let mut project = Project::new();
     let system = project
         .resolve(&root.join("systems/mosaic_example.yaml"), "cpu")
         .unwrap();

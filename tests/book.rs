@@ -16,11 +16,35 @@ fn real_book_has_complete_tables_links_and_reproducible_html_without_python() {
         .parent()
         .unwrap();
     let output = tempfile::tempdir().unwrap();
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    for relative in [
+        "examples/book/src/SUMMARY.md",
+        "examples/book/src/contract.md",
+        "examples/book/src/memory-maps.md",
+        "tests/fixtures/ips/timer.yaml",
+        "tests/fixtures/ips/rendering.yaml",
+        "tests/fixtures/systems/timer_cluster.yaml",
+        "tests/fixtures/systems/mosaic_example.yaml",
+    ] {
+        let destination = output.path().join(relative);
+        std::fs::create_dir_all(destination.parent().unwrap()).unwrap();
+        std::fs::copy(root.join(relative), destination).unwrap();
+    }
+    let mut config = std::fs::read_to_string(root.join("examples/book/book.toml"))
+        .unwrap()
+        .parse::<toml_edit::DocumentMut>()
+        .unwrap();
+    config["preprocessor"]["memmap"]["command"] = toml_edit::value("mdbook-memmap");
+    std::fs::write(
+        output.path().join("examples/book/book.toml"),
+        config.to_string(),
+    )
+    .unwrap();
     let mut pages = Vec::new();
     for build in ["first", "second"] {
         let destination = output.path().join(build);
         let result = Command::new(&mdbook)
-            .current_dir(env!("CARGO_MANIFEST_DIR"))
+            .current_dir(output.path())
             .args(["build", "examples/book", "--dest-dir"])
             .arg(&destination)
             // Neither Python nor a legacy backend can be found on this PATH.

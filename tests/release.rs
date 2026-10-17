@@ -62,7 +62,7 @@ impl Fixture {
     }
     fn inventory(&self) -> anyhow::Result<Project> {
         let lock = Arc::new(ReleaseLock::load(&self.lock())?);
-        let mut project = Project::with_release_lock(&[self.inputs()], Arc::clone(&lock))?;
+        let mut project = Project::with_release_lock(Arc::clone(&lock));
         lock.verify_inventory(&mut project)?;
         Ok(project)
     }
@@ -266,7 +266,7 @@ fn lock_and_source_changes_after_loading_are_detected() {
 #[test]
 fn verification_binds_the_parsed_snapshot_not_just_current_disk_bytes() {
     let fixture = Fixture::new();
-    let mut project = Project::new(&[fixture.inputs()]).unwrap();
+    let mut project = Project::new();
     let ip = fixture.inputs().join("ips/timer.yaml");
     project.load(&ip).unwrap();
     let mut changed = fs::read(&ip).unwrap();
@@ -285,14 +285,19 @@ fn verification_binds_the_parsed_snapshot_not_just_current_disk_bytes() {
 }
 
 #[test]
-fn pinned_inventory_cannot_escape_configured_roots() {
+fn locked_projects_allow_only_pinned_files_without_directory_restrictions() {
     let fixture = Fixture::new();
     let lock = Arc::new(ReleaseLock::load(&fixture.lock()).unwrap());
-    let mut project =
-        Project::with_release_lock(&[fixture.inputs().join("ips")], Arc::clone(&lock)).unwrap();
-    assert!(
-        format!("{:#}", lock.verify_inventory(&mut project).unwrap_err()).contains("[source-root]")
-    );
+    let mut project = Project::with_release_lock(Arc::clone(&lock));
+    lock.verify_inventory(&mut project).unwrap();
+    assert_eq!(project.definitions().count(), 3);
+    assert!(format!(
+        "{:#}",
+        project
+            .load(&fixture.inputs().join("ips/rendering.yaml"))
+            .unwrap_err()
+    )
+    .contains("[release-pin]"));
 }
 
 #[test]
